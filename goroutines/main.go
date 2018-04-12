@@ -7,19 +7,50 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/rodrigobotti/go-lessons/files/model"
+	"github.com/rodrigobotti/go-lessons/goroutines/model"
+)
+
+var (
+	orchestrator sync.WaitGroup
 )
 
 func main() {
-	file, err := os.Open("files/cities.csv")
+	measured("sequential", func() {
+		csvToJSON("goroutines/saopaulo")
+		csvToJSON("goroutines/riodejaneiro")
+	})
+	measured("concurrent", func() {
+		orchestrator.Add(2)
+		go orchestrated(func() { csvToJSON("goroutines/saopaulo") })
+		go orchestrated(func() { csvToJSON("goroutines/riodejaneiro") })
+		orchestrator.Wait()
+	})
+}
+
+func orchestrated(f func()) {
+	f()
+	orchestrator.Done()
+}
+
+func measured(name string, f func()) {
+	start := time.Now()
+	f()
+	fmt.Println(name, "took", time.Since(start))
+}
+
+func csvToJSON(fileName string) {
+	fmt.Println(time.Now(), "-- Started Processing ", fileName, " --")
+	file, err := os.Open(fileName + ".csv")
 	if err != nil {
 		fmt.Println("[main] Error when opening file", err)
 		return
 	}
 	// printLines(file)
 	// printCsv(file)
-	jsonFile, err := os.Create("files/cities.json")
+	jsonFile, err := os.Create(fileName + ".json")
 	defer jsonFile.Close() // defers execution until after surrounding function returns; arguments are evaluated immediately
 	if err != nil {
 		fmt.Println("[main] failed to create file", err)
@@ -34,6 +65,7 @@ func main() {
 		if err != nil {
 			fmt.Println("[main] error serializing city json for item", item, err)
 		}
+		fmt.Println(string(json))
 		writer.WriteString("  " + string(json))
 		if (ic + 1) < len(line) {
 			writer.WriteString(",")
@@ -42,7 +74,7 @@ func main() {
 	})
 	writer.WriteString("]")
 	writer.Flush()
-	// jsonFile.Close()
+	fmt.Println(time.Now(), "-- Finished Processing ", fileName, " --")
 }
 
 func printLines(file *os.File) {
